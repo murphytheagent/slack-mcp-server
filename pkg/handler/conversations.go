@@ -41,20 +41,20 @@ var validFilterKeys = map[string]struct{}{
 }
 
 type Message struct {
-	MsgID     string `json:"msgID"`
-	UserID    string `json:"userID"`
-	UserName  string `json:"userUser"`
-	RealName  string `json:"realName"`
-	Channel   string `json:"channelID"`
-	ThreadTs  string `json:"ThreadTs"`
-	Text      string `json:"text"`
-	Time      string `json:"time"`
-	Reactions string `json:"reactions,omitempty"`
-	BotName   string `json:"botName,omitempty"`
-	FileCount int    `json:"fileCount,omitempty"`
-	AttachmentIDs   string `json:"attachmentIDs,omitempty"`
-	HasMedia  bool   `json:"hasMedia,omitempty"`
-	Cursor    string `json:"cursor"`
+	MsgID         string `json:"msgID"`
+	UserID        string `json:"userID"`
+	UserName      string `json:"userUser"`
+	RealName      string `json:"realName"`
+	Channel       string `json:"channelID"`
+	ThreadTs      string `json:"ThreadTs"`
+	Text          string `json:"text"`
+	Time          string `json:"time"`
+	Reactions     string `json:"reactions,omitempty"`
+	BotName       string `json:"botName,omitempty"`
+	FileCount     int    `json:"fileCount,omitempty"`
+	AttachmentIDs string `json:"attachmentIDs,omitempty"`
+	HasMedia      bool   `json:"hasMedia,omitempty"`
+	Cursor        string `json:"cursor"`
 }
 
 type User struct {
@@ -243,8 +243,12 @@ func (ch *ConversationsHandler) ConversationsAddMessageHandler(ctx context.Conte
 	if toolConfig == "1" || toolConfig == "true" || toolConfig == "yes" {
 		err := ch.apiProvider.Slack().MarkConversationContext(ctx, params.channel, respTimestamp)
 		if err != nil {
-			ch.logger.Error("Slack MarkConversationContext failed", zap.Error(err))
-			return nil, err
+			// Message is already posted; avoid surfacing this as a tool failure.
+			ch.logger.Warn("Slack MarkConversationContext failed after successful post; continuing without mark",
+				zap.Error(err),
+				zap.String("channel", params.channel),
+				zap.String("timestamp", respTimestamp),
+			)
 		}
 	}
 
@@ -258,13 +262,42 @@ func (ch *ConversationsHandler) ConversationsAddMessageHandler(ctx context.Conte
 	}
 	history, err := ch.apiProvider.Slack().GetConversationHistoryContext(ctx, &historyParams)
 	if err != nil {
-		ch.logger.Error("GetConversationHistoryContext failed", zap.Error(err))
-		return nil, err
+		// Message is already posted; return a best-effort row instead of erroring.
+		ch.logger.Warn("GetConversationHistoryContext failed after successful post; returning fallback response",
+			zap.Error(err),
+			zap.String("channel", respChannel),
+			zap.String("timestamp", respTimestamp),
+		)
+		return marshalMessagesToCSV(buildPostedMessageFallback(params, respChannel, respTimestamp))
 	}
 	ch.logger.Debug("Fetched conversation history", zap.Int("message_count", len(history.Messages)))
 
 	messages := ch.convertMessagesFromHistory(history.Messages, historyParams.ChannelID, false)
 	return marshalMessagesToCSV(messages)
+}
+
+func buildPostedMessageFallback(params *addMessageParams, respChannel, respTimestamp string) []Message {
+	threadTS := params.threadTs
+	if threadTS == "" {
+		threadTS = respTimestamp
+	}
+
+	postedAt := ""
+	if converted, err := text.TimestampToIsoRFC3339(respTimestamp); err == nil {
+		postedAt = converted
+	}
+
+	return []Message{
+		{
+			MsgID:     respTimestamp,
+			Channel:   respChannel,
+			ThreadTs:  threadTS,
+			Text:      text.ProcessText(params.text),
+			Time:      postedAt,
+			FileCount: 0,
+			HasMedia:  false,
+		},
+	}
 }
 
 // ReactionsAddHandler adds an emoji reaction to a message
@@ -578,8 +611,9 @@ func (ch *ConversationsHandler) ConversationsSearchHandler(ctx context.Context, 
 	ch.logger.Debug("Search params parsed", zap.String("query", params.query), zap.Int("limit", params.limit), zap.Int("page", params.page))
 
 	searchParams := slack.SearchParameters{
-		Sort:          slack.DEFAULT_SEARCH_SORT,
-		SortDirection: slack.DEFAULT_SEARCH_SORT_DIR,
+		// Use recency-first ordering so polling callers can reliably fetch newest messages.
+		Sort:          "timestamp",
+		SortDirection: "desc",
 		Highlight:     false,
 		Count:         params.limit,
 		Page:          params.page,
@@ -722,19 +756,19 @@ func (ch *ConversationsHandler) convertMessagesFromHistory(slackMessages []slack
 		attachmentIDsStr := strings.Join(attachmentIDs, ",")
 
 		messages = append(messages, Message{
-			MsgID:     msg.Timestamp,
-			UserID:    msg.User,
-			UserName:  userName,
-			RealName:  realName,
-			Text:      text.ProcessText(msgText),
-			Channel:   channel,
-			ThreadTs:  msg.ThreadTimestamp,
-			Time:      timestamp,
-			Reactions: reactionsString,
-			BotName:   botName,
-			FileCount: fileCount,
-			AttachmentIDs:   attachmentIDsStr,
-			HasMedia:  hasMedia,
+			MsgID:         msg.Timestamp,
+			UserID:        msg.User,
+			UserName:      userName,
+			RealName:      realName,
+			Text:          text.ProcessText(msgText),
+			Channel:       channel,
+			ThreadTs:      msg.ThreadTimestamp,
+			Time:          timestamp,
+			Reactions:     reactionsString,
+			BotName:       botName,
+			FileCount:     fileCount,
+			AttachmentIDs: attachmentIDsStr,
+			HasMedia:      hasMedia,
 		})
 	}
 
