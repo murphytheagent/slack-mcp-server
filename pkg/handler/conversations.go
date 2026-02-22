@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -26,7 +27,8 @@ import (
 const (
 	defaultConversationsNumericLimit    = 50
 	defaultConversationsExpressionLimit = "1d"
-	maxFileSizeBytes                    = 5 * 1024 * 1024 // 5MB limit
+	maxDownloadFileSizeBytes            = 5 * 1024 * 1024  // 5MB limit
+	maxUploadFileSizeBytes              = 20 * 1024 * 1024 // 20MB limit
 )
 
 var validFilterKeys = map[string]struct{}{
@@ -103,6 +105,15 @@ type addReactionParams struct {
 
 type filesGetParams struct {
 	fileID string
+}
+
+type filesUploadParams struct {
+	channel        string
+	filePath       string
+	threadTs       string
+	filename       string
+	title          string
+	initialComment string
 }
 
 type usersSearchParams struct {
@@ -457,8 +468,8 @@ func (ch *ConversationsHandler) FilesGetHandler(ctx context.Context, request mcp
 		return nil, err
 	}
 
-	if fileInfo.Size > maxFileSizeBytes {
-		return nil, fmt.Errorf("file size %d bytes exceeds maximum allowed size of %d bytes", fileInfo.Size, maxFileSizeBytes)
+	if fileInfo.Size > maxDownloadFileSizeBytes {
+		return nil, fmt.Errorf("file size %d bytes exceeds maximum allowed size of %d bytes", fileInfo.Size, maxDownloadFileSizeBytes)
 	}
 
 	var buf bytes.Buffer
@@ -494,6 +505,47 @@ func (ch *ConversationsHandler) FilesGetHandler(ctx context.Context, request mcp
 		len(content),
 		encoding,
 		escapeJSON(contentStr))
+
+	return mcp.NewToolResultText(result), nil
+}
+
+func (ch *ConversationsHandler) FilesUploadHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	ch.logger.Debug("FilesUploadHandler called", zap.Any("params", request.Params))
+
+	if ready, err := ch.apiProvider.IsReady(); !ready {
+		ch.logger.Error("API provider not ready", zap.Error(err))
+		return nil, err
+	}
+
+	params, err := ch.parseParamsToolFilesUpload(ctx, request)
+	if err != nil {
+		ch.logger.Error("Failed to parse attachment_upload params", zap.Error(err))
+		return nil, err
+	}
+
+	fileSummary, err := ch.apiProvider.Slack().UploadFileV2Context(ctx, slack.UploadFileV2Parameters{
+		File:            params.filePath,
+		Filename:        params.filename,
+		Title:           params.title,
+		InitialComment:  params.initialComment,
+		Channel:         params.channel,
+		ThreadTimestamp: params.threadTs,
+	})
+	if err != nil {
+		ch.logger.Error("Slack UploadFileV2Context failed", zap.Error(err))
+		return nil, err
+	}
+	if fileSummary == nil {
+		return nil, errors.New("Slack returned an empty file summary")
+	}
+
+	result := fmt.Sprintf(`{"file_id":"%s","title":"%s","channel_id":"%s","thread_ts":"%s","filename":"%s"}`,
+		escapeJSON(fileSummary.ID),
+		escapeJSON(fileSummary.Title),
+		escapeJSON(params.channel),
+		escapeJSON(params.threadTs),
+		escapeJSON(params.filename),
+	)
 
 	return mcp.NewToolResultText(result), nil
 }
@@ -1035,6 +1087,80 @@ func (ch *ConversationsHandler) parseParamsToolFilesGet(request mcp.CallToolRequ
 
 	return &filesGetParams{
 		fileID: fileID,
+	}, nil
+}
+
+func (ch *ConversationsHandler) parseParamsToolFilesUpload(ctx context.Context, request mcp.CallToolRequest) (*filesUploadParams, error) {
+	toolConfig := os.Getenv("SLACK_MCP_ATTACHMENT_UPLOAD_TOOL")
+	enabledTools := os.Getenv("SLACK_MCP_ENABLED_TOOLS")
+
+	if toolConfig == "" {
+		if !strings.Contains(enabledTools, "attachment_upload") {
+			ch.logger.Error("Attachment upload tool disabled by default")
+			return nil, errors.New(
+				"by default, the attachment_upload tool is disabled to guard Slack workspaces against accidental uploads. " +
+					"To enable it, set SLACK_MCP_ATTACHMENT_UPLOAD_TOOL to true, 1, or comma separated list of channels " +
+					"to limit where uploads are allowed, e.g. 'SLACK_MCP_ATTACHMENT_UPLOAD_TOOL=C1234567890,D0987654321', " +
+					"'SLACK_MCP_ATTACHMENT_UPLOAD_TOOL=!C1234567890' to enable all except one, or " +
+					"'SLACK_MCP_ATTACHMENT_UPLOAD_TOOL=true' for all channels and DMs",
+			)
+		}
+		toolConfig = "true"
+	}
+
+	channel := request.GetString("channel_id", "")
+	if channel == "" {
+		return nil, errors.New("channel_id is required")
+	}
+	channel, err := ch.resolveChannelID(ctx, channel)
+	if err != nil {
+		ch.logger.Error("Channel not found", zap.String("channel", channel), zap.Error(err))
+		return nil, err
+	}
+	if !isChannelAllowedForConfig(channel, toolConfig) {
+		ch.logger.Warn("Attachment upload tool not allowed for channel", zap.String("channel", channel), zap.String("policy", toolConfig))
+		return nil, fmt.Errorf("attachment_upload tool is not allowed for channel %q, applied policy: %s", channel, toolConfig)
+	}
+
+	filePath := strings.TrimSpace(request.GetString("file_path", ""))
+	if filePath == "" {
+		return nil, errors.New("file_path is required")
+	}
+
+	fileInfo, err := os.Stat(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("unable to access file_path %q: %w", filePath, err)
+	}
+	if fileInfo.IsDir() {
+		return nil, fmt.Errorf("file_path %q is a directory, expected a regular file", filePath)
+	}
+	if fileInfo.Size() <= 0 {
+		return nil, fmt.Errorf("file_path %q is empty", filePath)
+	}
+	if fileInfo.Size() > maxUploadFileSizeBytes {
+		return nil, fmt.Errorf("file size %d bytes exceeds maximum allowed size of %d bytes", fileInfo.Size(), maxUploadFileSizeBytes)
+	}
+
+	threadTs := request.GetString("thread_ts", "")
+	if threadTs != "" && !strings.Contains(threadTs, ".") {
+		return nil, errors.New("thread_ts must be a valid timestamp in format 1234567890.123456")
+	}
+
+	filename := strings.TrimSpace(request.GetString("filename", ""))
+	if filename == "" {
+		filename = filepath.Base(filePath)
+	}
+	if filename == "." || filename == string(filepath.Separator) {
+		return nil, fmt.Errorf("cannot infer filename from file_path %q, pass filename explicitly", filePath)
+	}
+
+	return &filesUploadParams{
+		channel:        channel,
+		filePath:       filePath,
+		threadTs:       threadTs,
+		filename:       filename,
+		title:          strings.TrimSpace(request.GetString("title", "")),
+		initialComment: request.GetString("initial_comment", ""),
 	}, nil
 }
 

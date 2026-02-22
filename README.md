@@ -87,7 +87,7 @@ Get list of channels
 ### 6. reactions_add:
 Add an emoji reaction to a message in a public channel, private channel, or direct message (DM, or IM) conversation.
 
-> **Note:** Adding reactions is disabled by default for safety. To enable, set the `SLACK_MCP_ADD_MESSAGE_TOOL` environment variable. If set to a comma-separated list of channel IDs, reactions are enabled only for those specific channels. See the Environment Variables section below for details.
+> **Note:** Adding reactions is disabled by default for safety. To enable, set the `SLACK_MCP_REACTION_TOOL` environment variable. If set to a comma-separated list of channel IDs, reactions are enabled only for those specific channels. See the Environment Variables section below for details.
 
 - **Parameters:**
   - `channel_id` (string, required): ID of the channel in format `Cxxxxxxxxxx` or its name starting with `#...` or `@...` aka `#general` or `@username_dm`.
@@ -97,14 +97,35 @@ Add an emoji reaction to a message in a public channel, private channel, or dire
 ### 7. reactions_remove:
 Remove an emoji reaction from a message in a public channel, private channel, or direct message (DM, or IM) conversation.
 
-> **Note:** Removing reactions follows the same permission model as `reactions_add`. To enable, set the `SLACK_MCP_ADD_MESSAGE_TOOL` environment variable.
+> **Note:** Removing reactions follows the same permission model as `reactions_add`. To enable, set the `SLACK_MCP_REACTION_TOOL` environment variable.
 
 - **Parameters:**
   - `channel_id` (string, required): ID of the channel in format `Cxxxxxxxxxx` or its name starting with `#...` or `@...` aka `#general` or `@username_dm`.
   - `timestamp` (string, required): Timestamp of the message to remove reaction from, in format `1234567890.123456`.
   - `emoji` (string, required): The name of the emoji to remove as a reaction (without colons). Example: `thumbsup`, `heart`, `rocket`.
 
-### 8. users_search:
+### 8. attachment_get_data:
+Download an attachment's content by file ID. Returns metadata and content (text files as-is, binary files as base64). Maximum file size is 5MB.
+
+> **Note:** This tool is disabled by default. To enable, set `SLACK_MCP_ATTACHMENT_TOOL=true` (or `1`).
+
+- **Parameters:**
+  - `file_id` (string, required): Attachment file ID in format `Fxxxxxxxxxx`.
+
+### 9. attachment_upload:
+Upload a local file to a public channel, private channel, or DM, optionally in a thread.
+
+> **Note:** This tool is disabled by default. To enable, set `SLACK_MCP_ATTACHMENT_UPLOAD_TOOL=true`, `1`, or a comma-separated channel allowlist/blocklist (same policy format as `SLACK_MCP_ADD_MESSAGE_TOOL`).
+
+- **Parameters:**
+  - `channel_id` (string, required): ID of the channel in format `Cxxxxxxxxxx` or its name starting with `#...` or `@...` aka `#general` or `@username_dm`.
+  - `file_path` (string, required): Local filesystem path to the file to upload.
+  - `thread_ts` (string, optional): Thread timestamp in format `1234567890.123456` if upload should be posted into a thread.
+  - `filename` (string, optional): Display filename override. Defaults to basename of `file_path`.
+  - `title` (string, optional): Optional file title shown in Slack.
+  - `initial_comment` (string, optional): Optional comment message posted with the file.
+
+### 10. users_search:
 Search for users by name, email, or display name. Returns user details and DM channel ID if available.
 
 > **Note:** For OAuth tokens (`xoxp`/`xoxb`), this tool searches the local users cache using pattern matching. For browser session tokens (`xoxc`/`xoxd`), it uses the Slack edge API for real-time search.
@@ -122,7 +143,7 @@ Search for users by name, email, or display name. Returns user details and DM ch
   - `Title`: User's job title
   - `DMChannelID`: DM channel ID if available in cache (for quick messaging)
 
-### 9. usergroups_list:
+### 11. usergroups_list:
 List all user groups (subteams) in the workspace.
 
 - **Parameters:**
@@ -134,7 +155,7 @@ List all user groups (subteams) in the workspace.
 
 > **Required OAuth scopes:** `usergroups:read`
 
-### 10. usergroups_create:
+### 12. usergroups_create:
 Create a new user group in the workspace.
 
 - **Parameters:**
@@ -147,7 +168,7 @@ Create a new user group in the workspace.
 
 > **Required OAuth scopes:** `usergroups:write`
 
-### 11. usergroups_update:
+### 13. usergroups_update:
 Update an existing user group's metadata.
 
 - **Parameters:**
@@ -161,7 +182,7 @@ Update an existing user group's metadata.
 
 > **Required OAuth scopes:** `usergroups:write`
 
-### 12. usergroups_users_update:
+### 14. usergroups_users_update:
 Update the members of a user group. This replaces all existing members.
 
 - **Parameters:**
@@ -172,7 +193,7 @@ Update the members of a user group. This replaces all existing members.
 
 > **Required OAuth scopes:** `usergroups:write`
 
-### 13. usergroups_me:
+### 15. usergroups_me:
 Manage your user group membership: list groups you're in, join a group, or leave a group.
 
 - **Parameters:**
@@ -239,11 +260,14 @@ Fetches a CSV directory of all users in the workspace.
 | `SLACK_MCP_ADD_MESSAGE_TOOL`      | No        | `nil`                     | Enable message posting via `conversations_add_message` by setting it to `true` for all channels, a comma-separated list of channel IDs to whitelist specific channels, or use `!` before a channel ID to allow all except specified ones. If empty, the tool is only registered when explicitly listed in `SLACK_MCP_ENABLED_TOOLS`. |
 | `SLACK_MCP_ADD_MESSAGE_MARK`      | No        | `nil`                     | When `conversations_add_message` is enabled (via `SLACK_MCP_ADD_MESSAGE_TOOL` or `SLACK_MCP_ENABLED_TOOLS`), setting this to `true` will automatically mark sent messages as read.                                                                                                        |
 | `SLACK_MCP_ADD_MESSAGE_UNFURLING` | No        | `nil`                     | Enable to let Slack unfurl posted links or set comma-separated list of domains e.g. `github.com,slack.com` to whitelist unfurling only for them. If text contains whitelisted and unknown domain unfurling will be disabled for security reasons.                                         |
+| `SLACK_MCP_REACTION_TOOL`         | No        | `nil`                     | Enable `reactions_add` and `reactions_remove` by setting it to `true` for all channels, or a comma-separated channel allowlist/blocklist (prefix channel IDs with `!` to block specific channels).                                                                                       |
+| `SLACK_MCP_ATTACHMENT_TOOL`       | No        | `nil`                     | Enable `attachment_get_data` by setting it to `true` (or `1`).                                                                                                                                                                                                                            |
+| `SLACK_MCP_ATTACHMENT_UPLOAD_TOOL`| No        | `nil`                     | Enable `attachment_upload` by setting it to `true` for all channels, or a comma-separated channel allowlist/blocklist (same format as `SLACK_MCP_ADD_MESSAGE_TOOL`).                                                                                                                    |
 | `SLACK_MCP_USERS_CACHE`           | No        | `~/Library/Caches/slack-mcp-server/users_cache.json` (macOS)<br>`~/.cache/slack-mcp-server/users_cache.json` (Linux)<br>`%LocalAppData%/slack-mcp-server/users_cache.json` (Windows) | Path to the users cache file. Used to cache Slack user information to avoid repeated API calls on startup. |
 | `SLACK_MCP_CHANNELS_CACHE`        | No        | `~/Library/Caches/slack-mcp-server/channels_cache_v2.json` (macOS)<br>`~/.cache/slack-mcp-server/channels_cache_v2.json` (Linux)<br>`%LocalAppData%/slack-mcp-server/channels_cache_v2.json` (Windows) | Path to the channels cache file. Used to cache Slack channel information to avoid repeated API calls on startup. |
 | `SLACK_MCP_LOG_LEVEL`             | No        | `info`                    | Log-level for stdout or stderr. Valid values are: `debug`, `info`, `warn`, `error`, `panic` and `fatal`                                                                                                                                                                                   |
 | `SLACK_MCP_GOVSLACK`              | No        | `nil`                     | Set to `true` to enable [GovSlack](https://slack.com/solutions/govslack) mode. Routes API calls to `slack-gov.com` endpoints instead of `slack.com` for FedRAMP-compliant government workspaces.                                                                                          |
-| `SLACK_MCP_ENABLED_TOOLS`         | No        | `nil`                     | Comma-separated list of tools to register. If empty, all read-only tools and usergroups tools are registered; write tools (`conversations_add_message`, `reactions_add`, `reactions_remove`, `attachment_get_data`) require their specific env var OR must be explicitly listed here. When a write tool is listed here, it's enabled without channel restrictions. Available tools: `conversations_history`, `conversations_replies`, `conversations_add_message`, `reactions_add`, `reactions_remove`, `attachment_get_data`, `conversations_search_messages`, `channels_list`, `usergroups_list`, `usergroups_me`, `usergroups_create`, `usergroups_update`, `usergroups_users_update`. |
+| `SLACK_MCP_ENABLED_TOOLS`         | No        | `nil`                     | Comma-separated list of tools to register. If empty, all read-only tools and usergroups tools are registered; write tools (`conversations_add_message`, `reactions_add`, `reactions_remove`, `attachment_get_data`, `attachment_upload`) require their specific env var OR must be explicitly listed here. When a write tool is listed here, it's enabled without channel restrictions. Available tools: `conversations_history`, `conversations_replies`, `conversations_add_message`, `reactions_add`, `reactions_remove`, `attachment_get_data`, `attachment_upload`, `conversations_search_messages`, `channels_list`, `usergroups_list`, `usergroups_me`, `usergroups_create`, `usergroups_update`, `usergroups_users_update`. |
 
 *You need one of: `xoxp` (user), `xoxb` (bot), or both `xoxc`/`xoxd` tokens for authentication.
 
