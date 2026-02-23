@@ -58,6 +58,24 @@ func main() {
 		)
 	}
 
+	reactionToolEnv := os.Getenv("SLACK_MCP_REACTION_TOOL")
+	err = validateToolConfig(reactionToolEnv)
+	if err != nil {
+		logger.Fatal("error in SLACK_MCP_REACTION_TOOL",
+			zap.String("context", "console"),
+			zap.Error(err),
+		)
+	}
+
+	attachmentUploadToolEnv := os.Getenv("SLACK_MCP_ATTACHMENT_UPLOAD_TOOL")
+	err = validateToolConfig(attachmentUploadToolEnv)
+	if err != nil {
+		logger.Fatal("error in SLACK_MCP_ATTACHMENT_UPLOAD_TOOL",
+			zap.String("context", "console"),
+			zap.Error(err),
+		)
+	}
+
 	err = server.ValidateEnabledTools(enabledTools)
 	if err != nil {
 		logger.Fatal("error in SLACK_MCP_ENABLED_TOOLS",

@@ -194,6 +194,7 @@ type SlackAPI interface {
 	// Used to get files
 	GetFileInfoContext(ctx context.Context, fileID string, count, page int) (*slack.File, []slack.Comment, *slack.Paging, error)
 	GetFileContext(ctx context.Context, downloadURL string, writer io.Writer) error
+	UploadFileV2Context(ctx context.Context, params slack.UploadFileV2Parameters) (*slack.FileSummary, error)
 
 	// Used to get channels list from both Slack and Enterprise Grid versions
 	GetConversationsContext(ctx context.Context, params *slack.GetConversationsParameters) ([]slack.Channel, string, error)
@@ -427,6 +428,10 @@ func (c *MCPSlackClient) GetFileInfoContext(ctx context.Context, fileID string, 
 
 func (c *MCPSlackClient) GetFileContext(ctx context.Context, downloadURL string, writer io.Writer) error {
 	return c.slackClient.GetFileContext(ctx, downloadURL, writer)
+}
+
+func (c *MCPSlackClient) UploadFileV2Context(ctx context.Context, params slack.UploadFileV2Parameters) (*slack.FileSummary, error) {
+	return c.slackClient.UploadFileV2Context(ctx, params)
 }
 
 func (c *MCPSlackClient) ClientUserBoot(ctx context.Context) (*edge.ClientUserBootResponse, error) {

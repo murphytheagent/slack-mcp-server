@@ -31,6 +31,7 @@ const (
 	ToolReactionsAdd                = "reactions_add"
 	ToolReactionsRemove             = "reactions_remove"
 	ToolAttachmentGetData           = "attachment_get_data"
+	ToolAttachmentUpload            = "attachment_upload"
 	ToolConversationsSearchMessages = "conversations_search_messages"
 	ToolChannelsList                = "channels_list"
 	ToolUsergroupsList              = "usergroups_list"
@@ -47,6 +48,7 @@ var ValidToolNames = []string{
 	ToolReactionsAdd,
 	ToolReactionsRemove,
 	ToolAttachmentGetData,
+	ToolAttachmentUpload,
 	ToolConversationsSearchMessages,
 	ToolChannelsList,
 	ToolUsergroupsList,
@@ -228,6 +230,34 @@ func NewMCPServer(provider *provider.ApiProvider, logger *zap.Logger, enabledToo
 				mcp.Description("The ID of the attachment to download, in format Fxxxxxxxxxx. Attachment IDs can be found in message metadata when HasMedia is true or AttachmentCount > 0."),
 			),
 		), conversationsHandler.FilesGetHandler)
+	}
+
+	if shouldAddTool(ToolAttachmentUpload, enabledTools, "SLACK_MCP_ATTACHMENT_UPLOAD_TOOL") {
+		s.AddTool(mcp.NewTool(ToolAttachmentUpload,
+			mcp.WithDescription("Upload a local file to a Slack channel, private channel, or direct message (DM, or IM), optionally posting it in a thread."),
+			mcp.WithTitleAnnotation("Upload Attachment"),
+			mcp.WithDestructiveHintAnnotation(true),
+			mcp.WithString("channel_id",
+				mcp.Required(),
+				mcp.Description("ID of the channel in format Cxxxxxxxxxx or its name starting with #... or @... aka #general or @username_dm."),
+			),
+			mcp.WithString("file_path",
+				mcp.Required(),
+				mcp.Description("Local filesystem path to the file to upload."),
+			),
+			mcp.WithString("thread_ts",
+				mcp.Description("Optional thread timestamp in format 1234567890.123456. If provided, the file is posted in that thread."),
+			),
+			mcp.WithString("filename",
+				mcp.Description("Optional filename to display in Slack. Defaults to the basename of file_path."),
+			),
+			mcp.WithString("title",
+				mcp.Description("Optional title displayed by Slack for this file."),
+			),
+			mcp.WithString("initial_comment",
+				mcp.Description("Optional text message posted alongside the file."),
+			),
+		), conversationsHandler.FilesUploadHandler)
 	}
 
 	conversationsSearchTool := mcp.NewTool(ToolConversationsSearchMessages,
