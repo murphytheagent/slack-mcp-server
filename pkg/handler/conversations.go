@@ -110,6 +110,7 @@ type filesGetParams struct {
 type filesUploadParams struct {
 	channel        string
 	filePath       string
+	fileSize       int
 	threadTs       string
 	filename       string
 	title          string
@@ -525,6 +526,7 @@ func (ch *ConversationsHandler) FilesUploadHandler(ctx context.Context, request 
 
 	fileSummary, err := ch.apiProvider.Slack().UploadFileV2Context(ctx, slack.UploadFileV2Parameters{
 		File:            params.filePath,
+		FileSize:        params.fileSize,
 		Filename:        params.filename,
 		Title:           params.title,
 		InitialComment:  params.initialComment,
@@ -1157,6 +1159,7 @@ func (ch *ConversationsHandler) parseParamsToolFilesUpload(ctx context.Context, 
 	return &filesUploadParams{
 		channel:        channel,
 		filePath:       filePath,
+		fileSize:       int(fileInfo.Size()),
 		threadTs:       threadTs,
 		filename:       filename,
 		title:          strings.TrimSpace(request.GetString("title", "")),
