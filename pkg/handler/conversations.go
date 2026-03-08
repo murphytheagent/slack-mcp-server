@@ -524,6 +524,13 @@ func (ch *ConversationsHandler) FilesUploadHandler(ctx context.Context, request 
 		return nil, err
 	}
 
+	ch.logger.Info("Uploading file to Slack",
+		zap.String("file_path", params.filePath),
+		zap.Int("stat_size", params.fileSize),
+		zap.String("channel", params.channel),
+		zap.String("filename", params.filename),
+	)
+
 	fileSummary, err := ch.apiProvider.Slack().UploadFileV2Context(ctx, slack.UploadFileV2Parameters{
 		File:            params.filePath,
 		FileSize:        params.fileSize,
@@ -534,8 +541,13 @@ func (ch *ConversationsHandler) FilesUploadHandler(ctx context.Context, request 
 		ThreadTimestamp: params.threadTs,
 	})
 	if err != nil {
-		ch.logger.Error("Slack UploadFileV2Context failed", zap.Error(err))
-		return nil, err
+		ch.logger.Error("Slack UploadFileV2Context failed",
+			zap.Error(err),
+			zap.String("file_path", params.filePath),
+			zap.Int("stat_size_bytes", params.fileSize),
+			zap.String("channel", params.channel),
+		)
+		return nil, fmt.Errorf("upload failed (file=%s, stat_size=%d bytes): %w", params.filePath, params.fileSize, err)
 	}
 	if fileSummary == nil {
 		return nil, errors.New("Slack returned an empty file summary")
