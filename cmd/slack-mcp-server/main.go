@@ -190,12 +190,27 @@ func newUsersWatcher(p *provider.ApiProvider, once *sync.Once, logger *zap.Logge
 			return
 		}
 
-		err := p.RefreshUsers(context.Background())
-		if err != nil {
-			logger.Fatal("Error booting provider",
+		maxRetries := 3
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			err := p.RefreshUsers(context.Background())
+			if err == nil {
+				break
+			}
+			if attempt == maxRetries {
+				logger.Fatal("Error booting provider after retries",
+					zap.String("context", "console"),
+					zap.Int("attempts", maxRetries),
+					zap.Error(err),
+				)
+			}
+			backoff := time.Duration(attempt) * 2 * time.Second
+			logger.Warn("Transient error refreshing users, retrying...",
 				zap.String("context", "console"),
+				zap.Int("attempt", attempt),
+				zap.Duration("backoff", backoff),
 				zap.Error(err),
 			)
+			time.Sleep(backoff)
 		}
 
 		ready, _ := p.IsReady()
@@ -222,12 +237,27 @@ func newChannelsWatcher(p *provider.ApiProvider, once *sync.Once, logger *zap.Lo
 			return
 		}
 
-		err := p.RefreshChannels(context.Background())
-		if err != nil {
-			logger.Fatal("Error booting provider",
+		maxRetries := 3
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			err := p.RefreshChannels(context.Background())
+			if err == nil {
+				break
+			}
+			if attempt == maxRetries {
+				logger.Fatal("Error booting provider after retries",
+					zap.String("context", "console"),
+					zap.Int("attempts", maxRetries),
+					zap.Error(err),
+				)
+			}
+			backoff := time.Duration(attempt) * 2 * time.Second
+			logger.Warn("Transient error refreshing channels, retrying...",
 				zap.String("context", "console"),
+				zap.Int("attempt", attempt),
+				zap.Duration("backoff", backoff),
 				zap.Error(err),
 			)
+			time.Sleep(backoff)
 		}
 
 		ready, _ := p.IsReady()
